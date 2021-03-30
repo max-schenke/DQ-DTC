@@ -5,7 +5,7 @@ A benchmark for the performance of conventional control methods can be received 
 
 The needed python packages are listed in the requirements.txt and can e.g. be installed via
 ```
-	pip install requirements.txt
+	pip install -r requirements.txt
 ```
 	
 
