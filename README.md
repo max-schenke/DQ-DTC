@@ -1,3 +1,5 @@
+# Deep Q Direct Torque Control (DQ-DTC) - Code Examples
+
 The jupyter notebooks in this folder were created to present the training and usage of a DQ-DTC reinforcement learning drive control system.
 A deep Q direct torque controller can be trained via the DQ_DTC_training.ipynb notebook.
 The trained controller can then be tested with the DQ_DTC_validation_profile.ipynb notebook.
