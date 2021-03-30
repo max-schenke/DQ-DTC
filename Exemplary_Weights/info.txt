@@ -1,0 +1,7 @@
+
+
+These exemplary weights can be tested for their performance.
+Required additional information:
+
+"activation_fcn": "leaky_relu",
+"activation_fcn_parameter": 0.3425,
