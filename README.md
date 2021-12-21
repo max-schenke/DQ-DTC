@@ -19,11 +19,12 @@ that were outsourced from the notebooks, they do not need to be executed manuall
 Please use the following BibTeX entry to cite this code:
 
 ```
-@ARTICLE{9416143,  
-author={Schenke, Maximilian and Wallscheid, Oliver},  
+@ARTICLE{9416143,  author={Schenke, Maximilian and Wallscheid, Oliver},  
 journal={IEEE Open Journal of the Industrial Electronics Society},   
 title={A Deep Q-Learning Direct Torque Controller for Permanent Magnet Synchronous Motors},   
-ear={2021},  volume={},  number={},  
-pages={1-1},  
+year={2021},  
+volume={2},  
+number={},  
+pages={388-400},  
 doi={10.1109/OJIES.2021.3075521}}
 ```
