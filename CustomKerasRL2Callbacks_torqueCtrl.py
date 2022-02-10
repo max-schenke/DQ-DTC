@@ -2,6 +2,9 @@ from rl.callbacks import Callback
 import timeit
 import numpy as np
 import h5py
+from pathlib import Path
+from tqdm import tqdm
+
 
 class randomSpeedProfile:
     """
@@ -40,7 +43,8 @@ class randomSpeedProfile:
             self.t_ramp_end = t + self.rampDuration
 
         if t < self.t_ramp_end:
-            self.now_speed = (t - self.t_ramp_start) * (self.next_speed - self.old_speed) / self.rampDuration + self.old_speed
+            self.now_speed = (t - self.t_ramp_start) * (self.next_speed -
+                                                        self.old_speed) / self.rampDuration + self.old_speed
         else:
             self.old_speed = self.next_speed
 
@@ -56,6 +60,8 @@ class StoreEpisodeLogger(Callback):
     3) creating logfiles of the training episodes to monitor learning progress (also for plotting)
     """
 
+    LOG_INTERVAL = 50
+
     def __init__(self,
                  folder_name,
                  file_name,
@@ -67,12 +73,16 @@ class StoreEpisodeLogger(Callback):
                  nb_steps_start,
                  nb_steps_reduction,
                  speed_generator,
-                 create_eps_logs = False,
-                 test = False,):
+                 create_eps_logs=False,
+                 nb_steps=None,
+                 test=False,):
 
         self.folder_name = folder_name
-        self.file_name = file_name
-        self.tau = tau
+
+        self.folder_path = Path(Path.cwd() / folder_name)
+        self.log_path = self.folder_path / f'tau_{tau}_{file_name}'
+        self.mean_rew_hist_path = self.folder_path / 'mean_reward_history.txt'
+
         self.limits = limits
         self.training = training
         self.create_eps_logs = create_eps_logs
@@ -82,11 +92,13 @@ class StoreEpisodeLogger(Callback):
         self.nb_steps_start = nb_steps_start
         self.nb_steps_reduction = nb_steps_reduction
 
-        self.episode_start = {}
-        self.observations = {}
-        self.rewards = {}
-        self.actions = {}
+        self.episode_start = []
+        self.observations = []
+        self.rewards = []
+        self.actions = []
 
+        self.pbar = tqdm(desc="Training", total=nb_steps, unit='steps')
+        self.mean_rew_history = []
         self.step = 0
         self.test = test
 
@@ -115,51 +127,36 @@ class StoreEpisodeLogger(Callback):
         self.resample_state = True
 
         # initialize the logging buffers
-        self.episode_start[episode] = timeit.default_timer()
-        self.observations[episode] = []
-        self.rewards[episode] = []
-        self.actions[episode] = []
+        self.episode_start.append(timeit.default_timer())
 
     def on_episode_end(self, episode, logs):
 
         # compute the mean reward for the finished episode
-        mean_rew = np.mean(self.rewards[episode])
-
+        mean_rew = np.mean(self.rewards)
+        self.mean_rew_history.append(mean_rew)
         # log the training process in the form of text output
         if self.training:
             if not self.test:
-                print(self.folder_name + " Steps learned = {} / {}, episode = {}, mean reward = {}".
-                      format(logs['nb_steps'], self.params['nb_steps'], episode, mean_rew))
+                self.pbar.set_postfix_str(
+                    f"{self.folder_name} - episode: {episode}, mean reward: {mean_rew}")
+                self.pbar.update(logs['nb_steps'])
 
             # a reward history file will log the mean reward over the course of all training episodes
-            if episode == 0:
-                history = np.array([])
-            else:
-                try:
-                    with h5py.File(self.folder_name + "/" + "history" + ".hdf5", "r") as f:
-                        history = np.copy(f['history'])
-                except:
-                    history = np.array([])
-
-            with h5py.File(self.folder_name + "/" + "history" + ".hdf5", "w") as f:
-                history = np.append(history, mean_rew)
-                hist = f.create_dataset("history", data=history)
+            if episode % self.LOG_INTERVAL == 0:  # debounce
+                with open(self.folder_path / 'mean_reward_history.txt', 'a') as fhandle:
+                    fhandle.writelines([f'{r}\n' for r in self.mean_rew_history])
+                self.mean_rew_history = []
 
         # create a logfile at the end of each episode, important for plotting of episodes
         if self.create_eps_logs:
-            with h5py.File(self.folder_name + "/" + self.file_name + "_" + str(episode) + ".hdf5", "w") as f:
-                tau = f.create_dataset("tau", data=self.tau)
-                lim = f.create_dataset("limits", data=self.limits)
-
-                obs = f.create_dataset("observations", data=self.observations[episode])
-                rews = f.create_dataset("rewards", data=self.rewards[episode])
-                acts = f.create_dataset("actions", data=self.actions[episode])
-
-        # clear the logging buffers
-        del self.episode_start[episode]
-        del self.observations[episode]
-        del self.rewards[episode]
-        del self.actions[episode]
+            if episode % self.LOG_INTERVAL == 0:  # debounce
+                with open(self.log_path, 'a') as fhandle:
+                    fhandle.writelines(
+                        [','.join([str(o) for o in obs.tolist()] + [str(a), str(r)])+'\n' for obs, a, r, in
+                         zip(self.observations, self.actions, self.rewards)])
+                self.observations = []
+                self.actions = []
+                self.rewards = []
 
     def on_step_begin(self, step, logs={}):
 
@@ -171,14 +168,15 @@ class StoreEpisodeLogger(Callback):
                 eps_0 = 0
                 omega_0 = 0
                 self.env.env.env.reference_generator._reference_value = 0
-                self.env.env.env.physical_system._ode_solver.set_initial_value(np.array([omega_0, i_d_0, i_q_0, eps_0]))
+                self.env.env.env.physical_system._ode_solver.set_initial_value(
+                    np.array([omega_0, i_d_0, i_q_0, eps_0]))
                 self.resample_state = False
 
             # the validation profile has a defined torque reference profile
             else:
                 niveau0 = 0
-                niveau1 = 0.375 #0.5
-                niveau2 = 0.75 #1
+                niveau1 = 0.375  # 0.5
+                niveau2 = 0.75  # 1
 
                 if (step % 25000) <= 5000:
                     self.env.env.env.reference_generator._reference_value = niveau0
@@ -200,15 +198,19 @@ class StoreEpisodeLogger(Callback):
             # if the environment has to be reset, use exploring starts
             if self.resample_state:
                 eps_0 = np.random.uniform(-1, 1) * np.pi
-                omega_0 = self.speed_generator.upcoming_speed * self.env.env.env.physical_system.limits[0]
+                omega_0 = self.speed_generator.upcoming_speed * \
+                    self.env.env.env.physical_system.limits[0]
 
                 # the utilized exploring starts strategy uses parameter knowledge to speed up the training, which is helpful but not obligatory
-		# the agent itself has no parameter knowledge
+                # the agent itself has no parameter knowledge
                 guaranteed_in_ellipsis = True
                 if guaranteed_in_ellipsis:
-                    psi_p = self.env.env.env.physical_system.electrical_motor.motor_parameter["psi_p"]
-                    l_d = self.env.env.env.physical_system.electrical_motor.motor_parameter["l_d"]
-                    l_q = self.env.env.env.physical_system.electrical_motor.motor_parameter["l_q"]
+                    psi_p = self.env.env.env.physical_system.electrical_motor.motor_parameter[
+                        "psi_p"]
+                    l_d = self.env.env.env.physical_system.electrical_motor.motor_parameter[
+                        "l_d"]
+                    l_q = self.env.env.env.physical_system.electrical_motor.motor_parameter[
+                        "l_q"]
                     p = self.env.env.env.physical_system.electrical_motor.motor_parameter["p"]
                     u_dc = self.limits[-1]
                     dc_link_d = u_dc / (np.sqrt(3) * l_d * np.abs(omega_0 * p))
@@ -217,7 +219,8 @@ class StoreEpisodeLogger(Callback):
                     i_d_0 = np.random.uniform(i_d_lower, i_d_upper)
                     i_q_upper = np.clip(np.sqrt((u_dc / (np.sqrt(3) * omega_0 * p * l_q)) ** 2 -
                                         (l_d / l_q * (i_d_0 + psi_p / l_d)) ** 2), None, np.sqrt(230 ** 2 - i_d_0 ** 2))
-                    i_q_lower = np.clip(- i_q_upper, - np.sqrt(230 ** 2 - i_d_0 ** 2), None)
+                    i_q_lower = np.clip(- i_q_upper, -
+                                        np.sqrt(230 ** 2 - i_d_0 ** 2), None)
                     i_q_0 = np.random.uniform(i_q_lower, i_q_upper)
 
                 # one can also use exploring starts in a completely random fashion,
@@ -228,23 +231,25 @@ class StoreEpisodeLogger(Callback):
                     i_d_0 = np.random.uniform(-0.7, +0.7) * 240
 
                 # reset the motor system in the given way
-                self.env.env.env.physical_system._ode_solver.set_initial_value(np.array([omega_0, i_d_0, i_q_0, eps_0]))
+                self.env.env.env.physical_system._ode_solver.set_initial_value(
+                    np.array([omega_0, i_d_0, i_q_0, eps_0]))
                 self.resample_state = False
-
 
             # changes the agent's learning rate if necessary
             if self.step > self.nb_steps_start and self.step < (self.nb_steps_start + self.nb_steps_reduction):
                 lr_slope = self.lr_max - self.lr_min
-                new_lr = self.lr_max - lr_slope / self.nb_steps_reduction * (self.step - self.nb_steps_start)
+                new_lr = self.lr_max - lr_slope / self.nb_steps_reduction * \
+                    (self.step - self.nb_steps_start)
                 self.model.trainable_model.optimizer._hyper['learning_rate'] = new_lr
 
     def on_step_end(self, step, logs):
 
         # save the new state transition to the logging buffer
-        episode = logs['episode']
-        self.observations[episode].append(self.env.env._obs_logger) # (logs['observation'])
-        self.rewards[episode].append(logs['reward'])
-        self.actions[episode].append(logs['action'])
+
+        self.observations.append(
+            self.env.env._obs_logger)  # (logs['observation'])
+        self.rewards.append(logs['reward'])
+        self.actions.append(logs['action'])
 
         # count the steps
         self.step += 1
