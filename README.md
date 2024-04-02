@@ -6,6 +6,7 @@ The jupyter notebooks in this folder were created to present the training and us
 A benchmark for the performance of conventional control methods can be received via the MP_DTC_validation_profile.ipynb notebook.
 
 It is recommended to use Python 3.7.1
+
 The needed python packages are listed in the requirements.txt and can e.g. be installed via
 ```
 	pip install -r requirements.txt
