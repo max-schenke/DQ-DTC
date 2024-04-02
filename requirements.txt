@@ -3,6 +3,6 @@ numpy==1.19.5
 tensorflow==2.5.0
 keras-rl2==1.0.5
 gym==0.18.0
-gym-electric-motor==0.3.1
+gym-electric-motor==1.0
 pandas==1.2.4
 tqdm==4.60.0
